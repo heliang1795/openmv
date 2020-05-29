@@ -30,6 +30,7 @@
 #include "socket/include/socket.h"
 #include "driver/include/m2m_wifi.h"
 
+#if MICROPY_PY_WINC1500
 typedef struct _winc_obj_t {
     mp_obj_base_t base;
 } winc_obj_t;
@@ -501,7 +502,12 @@ static mp_uint_t py_winc_socket_sendto(mod_network_socket_obj_t *socket,
 {
     MAKE_SOCKADDR(addr, ip, port)
     int ret = winc_socket_sendto(socket->fd, buf, len, &addr, socket->timeout);
-    if (ret < 0) {
+    if (ret == SOCK_ERR_TIMEOUT) {
+        // The socket is Not closed on timeout when calling
+        // WINC1500 functions that actually accept a timeout.
+        *_errno = MP_ETIMEDOUT;
+        return 0;
+    } else if (ret < 0) {
         *_errno = ret;
         py_winc_socket_close(socket);
         return -1;
@@ -625,3 +631,4 @@ const mod_network_nic_type_t mod_network_nic_type_winc = {
     .settimeout = py_winc_socket_settimeout,
     .ioctl      = py_winc_socket_ioctl,
 };
+#endif // MICROPY_PY_WINC1500

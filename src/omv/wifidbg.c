@@ -29,8 +29,11 @@
 #include "lib/utils/pyexec.h"
 #include "wifidbg.h"
 #include "led.h"
+#include "omv_boardconfig.h"
 
 #include STM32_HAL_H
+
+#if OMV_ENABLE_WIFIDBG && MICROPY_PY_WINC1500
 
 #ifndef MIN
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -242,3 +245,6 @@ void wifidbg_dispatch()
         }
     }
 }
+#else
+void wifidbg_dispatch(){};
+#endif // OMV_ENABLE_WIFIDBG && MICROPY_PY_WINC1500

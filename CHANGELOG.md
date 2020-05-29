@@ -1,4 +1,64 @@
 # Change Log
+## [3.6.3](https://github.com/openmv/openmv/releases/tag/v3.6.3) (2020-5-16)
+* Update TF to support uint8/int8/float32
+* Re-enable TF on OMV3/F7.
+* Improved imlib lens correction.
+* Fix rotation correction bug.
+* Update MLX90640 driver.
+* Improved FIR sensors support.
+* Support higher framerate on OV5640.
+* Improved drawing and blending functions.
+* Fix Bayer to YCBCR edge bug.
+
+## [3.6.2](https://github.com/openmv/openmv/releases/tag/v3.6.2) (2020-5-04)
+* Optimized Bayer to RGB565/YCBCR.
+* Optimized datamatrix ops and binary ops.
+* Improved WiFi throughput.
+* Add raw data RD/WR access to the image object.
+* Support draw image with custom palettes.
+* Add new OpenMV RPC Interface Library.
+* Fix H7 SPI DMA bugs.
+* Fix H7 SPI and I2C DMA Deinit.
+* Fix and update draw_image.
+* Updated tensorflow library to support int8
+* Fix H7 FDCAN bugs.
+* Fix bug in filters corrupting memory if y size less than k_size.
+
+## [3.6.1](https://github.com/openmv/openmv/releases/tag/v3.6.1) (2020-3-30)
+* Add support for OV7690 and HM01B0 sensors.
+* Add support for Portenta-H747.
+* Optimized image filters, lens correction and find_circles.
+* Add BGR argument to lcd init (fixes an issue with some LCDs).
+* Move clock configuration to board config file.
+* Fix hardfault on disable D cache. 
+* Fix Tensorflow stack overflow issue.
+* Fix load_to_fb bug.
+
+## [3.6](https://github.com/openmv/openmv/releases/tag/v3.6) (2020-2-7)
+* Fix H7 DAC timed write bug.
+* Fix self-tests bug.
+* Fix H7 I2C timings.
+* Fix TIM4 reserved bug.
+* Update to MicroPython v1.12
+* Support for 32MBs QSPI flash.
+* Bootloader QSPI flash support.
+* OMV4+ UVC support.
+* OV5640 sensor driver.
+* Optimized LSD, AprilTags, QRCode and JPEG.
+* Updated py_tf tensorflow docs.
+
+## [3.5.2](https://github.com/openmv/openmv/releases/tag/v3.5.2) (2019-12-17)
+* Fix H7 timer bug.
+* Update timer test scripts.
+* Enable DBGMCU in sleep modes.
+* Fix MQTT module to work with SSL sockets.
+
+## [3.5.1](https://github.com/openmv/openmv/releases/tag/v3.5.1) (2019-12-06)
+* Update ulab submodule.
+* Update Tensorflow library.
+* Fix sepconv3 bug.
+* Fix debug build errors.
+
 ## [3.5.0](https://github.com/openmv/openmv/releases/tag/v3.5.0) (2019-11-04)
 * Update CMSIS to v5.4.0
 * Update H7 HAL to v1.5

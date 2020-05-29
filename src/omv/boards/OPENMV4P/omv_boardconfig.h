@@ -12,13 +12,17 @@
 #define __OMV_BOARDCONFIG_H__
 
 // Architecture info
-#define OMV_ARCH_STR            "OMV4R H7 32768 SDRAM" // 33 chars max
+#define OMV_ARCH_STR            "OMV4P H7 32768 SDRAM" // 33 chars max
 #define OMV_BOARD_TYPE          "H7"
 #define OMV_UNIQUE_ID_ADDR      0x1FF1E800
 
 // Flash sectors for the bootloader.
 // Flash FS sector, main FW sector, max sector.
 #define OMV_FLASH_LAYOUT        {1, 2, 15}
+
+// QSPI Flash layout for the bootloader.
+// First block, maximum block, block size in bytes.
+#define OMV_QSPIF_LAYOUT        {0, 511, 64*1024}
 
 #define OMV_XCLK_MCO            (0U)
 #define OMV_XCLK_TIM            (1U)
@@ -49,6 +53,9 @@
 #define OMV_ENABLE_MT9V034      (1)
 #define OMV_ENABLE_LEPTON       (1)
 
+// Enable WiFi debug
+#define OMV_ENABLE_WIFIDBG      (1)
+
 // If buffer size is bigger than this threshold, the quality is reduced.
 // This is only used for JPEG images sent to the IDE not normal compression.
 #define JPEG_QUALITY_THRESH     (1920*1080*2)
@@ -59,6 +66,47 @@
 
 // FB Heap Block Size
 #define OMV_UMM_BLOCK_SIZE      256
+
+// Core VBAT for selftests
+#define OMV_CORE_VBAT           "3.3"
+
+//PLL1 48MHz for USB, SDMMC and FDCAN
+#define OMV_OSC_PLL1M           (3)
+#define OMV_OSC_PLL1N           (240)
+#define OMV_OSC_PLL1P           (2)
+#define OMV_OSC_PLL1Q           (20)
+#define OMV_OSC_PLL1R           (2)
+#define OMV_OSC_PLL1VCI         (RCC_PLL1VCIRANGE_2)
+#define OMV_OSC_PLL1VCO         (RCC_PLL1VCOWIDE)
+#define OMV_OSC_PLL1FRAC        (0)
+
+// PLL2 200MHz for FMC and QSPI.
+#define OMV_OSC_PLL2M           (3)
+#define OMV_OSC_PLL2N           (100)
+#define OMV_OSC_PLL2P           (2)
+#define OMV_OSC_PLL2Q           (2)
+#define OMV_OSC_PLL2R           (2)
+#define OMV_OSC_PLL2VCI         (RCC_PLL2VCIRANGE_2)
+#define OMV_OSC_PLL2VCO         (RCC_PLL2VCOWIDE)
+#define OMV_OSC_PLL2FRAC        (0)
+
+// PLL3 160MHz for ADC and SPI123
+#define OMV_OSC_PLL3M           (3)
+#define OMV_OSC_PLL3N           (80)
+#define OMV_OSC_PLL3P           (2)
+#define OMV_OSC_PLL3Q           (2)
+#define OMV_OSC_PLL3R           (2)
+#define OMV_OSC_PLL3VCI         (RCC_PLL3VCIRANGE_2)
+#define OMV_OSC_PLL3VCO         (RCC_PLL3VCOWIDE)
+#define OMV_OSC_PLL3FRAC        (0)
+
+// HSE/HSI/CSI State
+#define OMV_OSC_HSE_STATE       (RCC_HSE_ON)
+#define OMV_OSC_HSI_STATE       (RCC_HSI_OFF)
+#define OMV_OSC_CSI_STATE       (RCC_CSI_OFF)
+
+// Flash Latency
+#define OMV_FLASH_LATENCY       (FLASH_LATENCY_2)
 
 // Linker script constants (see the linker script template stm32fxxx.ld.S).
 // Note: fb_alloc is a stack-based, dynamically allocated memory on FB.
@@ -75,8 +123,10 @@
 
 #define OMV_FB_SIZE             (30M)       // FB memory: header + VGA/GS image
 #define OMV_FB_ALLOC_SIZE       (1M)        // minimum fb alloc size
-#define OMV_STACK_SIZE          (8K)
-#define OMV_HEAP_SIZE           (237K)
+#define OMV_STACK_SIZE          (15K)
+#define OMV_HEAP_SIZE           (229K)
+#define OMV_SDRAM_SIZE          (32 * 1024 * 1024) // This needs to be here for UVC firmware.
+#define OMV_SDRAM_TEST          (0)
 
 #define OMV_LINE_BUF_SIZE       (11K)       // Image line buffer round(2592 * 2BPP * 2 buffers).
 #define OMV_MSC_BUF_SIZE        (12K)       // USB MSC bot data
@@ -113,7 +163,21 @@
 #define SCCB_PORT               (GPIOB)
 #define SCCB_SCL_PIN            (GPIO_PIN_8)
 #define SCCB_SDA_PIN            (GPIO_PIN_9)
-#define SCCB_TIMING             (0x20D09DE7) // Frequency: 100KHz Rise Time: 100ns Fall Time: 20ns
+#define SCCB_TIMING             (I2C_TIMING_STANDARD)
+#define SCCB_FORCE_RESET()      __HAL_RCC_I2C1_FORCE_RESET()
+#define SCCB_RELEASE_RESET()    __HAL_RCC_I2C1_RELEASE_RESET()
+
+/* FIR I2C */
+#define FIR_I2C                 (I2C2)
+#define FIR_I2C_AF              (GPIO_AF4_I2C2)
+#define FIR_I2C_CLK_ENABLE()    __I2C2_CLK_ENABLE()
+#define FIR_I2C_CLK_DISABLE()   __I2C2_CLK_DISABLE()
+#define FIR_I2C_PORT            (GPIOB)
+#define FIR_I2C_SCL_PIN         (GPIO_PIN_10)
+#define FIR_I2C_SDA_PIN         (GPIO_PIN_11)
+#define FIR_I2C_TIMING          (I2C_TIMING_FULL)
+#define FIR_I2C_FORCE_RESET()   __HAL_RCC_I2C2_FORCE_RESET()
+#define FIR_I2C_RELEASE_RESET() __HAL_RCC_I2C2_RELEASE_RESET()
 
 /* DCMI */
 #define DCMI_TIM                (TIM1)
@@ -131,8 +195,8 @@
 #define DCMI_PWDN_PIN           (GPIO_PIN_7)
 #define DCMI_PWDN_PORT          (GPIOD)
 
-#define DCMI_FSIN_PIN           (GPIO_PIN_5)
-#define DCMI_FSIN_PORT          (GPIOB)
+#define DCMI_FSYNC_PIN          (GPIO_PIN_5)
+#define DCMI_FSYNC_PORT         (GPIOB)
 
 #define DCMI_D0_PIN             (GPIO_PIN_6)
 #define DCMI_D1_PIN             (GPIO_PIN_7)
@@ -166,8 +230,8 @@
 #define DCMI_PWDN_LOW()         HAL_GPIO_WritePin(DCMI_PWDN_PORT, DCMI_PWDN_PIN, GPIO_PIN_RESET)
 #define DCMI_PWDN_HIGH()        HAL_GPIO_WritePin(DCMI_PWDN_PORT, DCMI_PWDN_PIN, GPIO_PIN_SET)
 
-#define DCMI_FSIN_LOW()         HAL_GPIO_WritePin(DCMI_FSIN_PORT, DCMI_FSIN_PIN, GPIO_PIN_RESET)
-#define DCMI_FSIN_HIGH()        HAL_GPIO_WritePin(DCMI_FSIN_PORT, DCMI_FSIN_PIN, GPIO_PIN_SET)
+#define DCMI_FSYNC_LOW()        HAL_GPIO_WritePin(DCMI_FSYNC_PORT, DCMI_FSYNC_PIN, GPIO_PIN_RESET)
+#define DCMI_FSYNC_HIGH()       HAL_GPIO_WritePin(DCMI_FSYNC_PORT, DCMI_FSYNC_PIN, GPIO_PIN_SET)
 
 #define DCMI_VSYNC_IRQN         EXTI9_5_IRQn
 #define DCMI_VSYNC_IRQ_LINE     (7)
@@ -199,20 +263,20 @@
 #define WINC_CS_LOW()           HAL_GPIO_WritePin(WINC_CS_PORT, WINC_CS_PIN, GPIO_PIN_RESET)
 #define WINC_CS_HIGH()          HAL_GPIO_WritePin(WINC_CS_PORT, WINC_CS_PIN, GPIO_PIN_SET)
 
-#define I2C_PORT                GPIOB
-#define I2C_SIOC_PIN            GPIO_PIN_10
-#define I2C_SIOD_PIN            GPIO_PIN_11
+#define SOFT_I2C_PORT                GPIOB
+#define SOFT_I2C_SIOC_PIN            GPIO_PIN_10
+#define SOFT_I2C_SIOD_PIN            GPIO_PIN_11
 
-#define I2C_SIOC_H()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOC_PIN, GPIO_PIN_SET)
-#define I2C_SIOC_L()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOC_PIN, GPIO_PIN_RESET)
+#define SOFT_I2C_SIOC_H()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOC_PIN, GPIO_PIN_SET)
+#define SOFT_I2C_SIOC_L()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOC_PIN, GPIO_PIN_RESET)
 
-#define I2C_SIOD_H()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOD_PIN, GPIO_PIN_SET)
-#define I2C_SIOD_L()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOD_PIN, GPIO_PIN_RESET)
+#define SOFT_I2C_SIOD_H()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN, GPIO_PIN_SET)
+#define SOFT_I2C_SIOD_L()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN, GPIO_PIN_RESET)
 
-#define I2C_SIOD_READ()         HAL_GPIO_ReadPin(I2C_PORT, I2C_SIOD_PIN)
-#define I2C_SIOD_WRITE(bit)     HAL_GPIO_WritePin(I2C_PORT, I2C_SIOD_PIN, bit);
+#define SOFT_I2C_SIOD_READ()         HAL_GPIO_ReadPin (SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN)
+#define SOFT_I2C_SIOD_WRITE(bit)     HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN, bit);
 
-#define I2C_SPIN_DELAY          32
+#define SOFT_I2C_SPIN_DELAY         64
 
 #define LEPTON_SPI                  (SPI3)
 #define LEPTON_SPI_AF               (GPIO_AF6_SPI3)
@@ -244,10 +308,61 @@
 #define LEPTON_SPI_MOSI_PORT        (GPIOB)
 #define LEPTON_SPI_SSEL_PORT        (GPIOA)
 
+// QSPI flash configuration for the bootloader.
+#define QSPIF_SIZE_BITS             (25)        // 2**25 == 32MBytes.
+#define QSPIF_SR_WIP_MASK           (1 << 0)
+#define QSPIF_SR_WEL_MASK           (1 << 1)
+#define QSPIF_READ_QUADIO_DCYC      (6)
+
+#define QSPIF_PAGE_SIZE             (0x100)     // 256 bytes pages.
+#define QSPIF_NUM_PAGES             (0x20000)   // 131072 pages of 256 bytes
+
+#define QSPIF_SECTOR_SIZE           (0x1000)    // 4K bytes sectors.
+#define QSPIF_NUM_SECTORS           (0x2000)    // 8192 sectors of 4K bytes
+
+#define QSPIF_BLOCK_SIZE            (0x10000)   // 64K bytes blocks.
+#define QSPIF_NUM_BLOCKS            (0x200)     // 512 blocks of 64K bytes
+
+#define QSPIF_CLK_PIN               (GPIO_PIN_10)
+#define QSPIF_CLK_PORT              (GPIOF)
+#define QSPIF_CLK_ALT               (GPIO_AF9_QUADSPI)
+
+#define QSPIF_CS_PIN                (GPIO_PIN_6)
+#define QSPIF_CS_PORT               (GPIOG)
+#define QSPIF_CS_ALT                (GPIO_AF10_QUADSPI)
+
+#define QSPIF_D0_PIN                (GPIO_PIN_8)
+#define QSPIF_D0_PORT               (GPIOF)
+#define QSPIF_D0_ALT                (GPIO_AF10_QUADSPI)
+
+#define QSPIF_D1_PIN                (GPIO_PIN_9)
+#define QSPIF_D1_PORT               (GPIOF)
+#define QSPIF_D1_ALT                (GPIO_AF10_QUADSPI)
+
+#define QSPIF_D2_PIN                (GPIO_PIN_7)
+#define QSPIF_D2_PORT               (GPIOF)
+#define QSPIF_D2_ALT                (GPIO_AF9_QUADSPI)
+
+#define QSPIF_D3_PIN                (GPIO_PIN_6)
+#define QSPIF_D3_PORT               (GPIOF)
+#define QSPIF_D3_ALT                (GPIO_AF9_QUADSPI)
+
+#define QSPIF_CLK_ENABLE()           __HAL_RCC_QSPI_CLK_ENABLE()
+#define QSPIF_CLK_DISABLE()          __HAL_RCC_QSPI_CLK_DISABLE()
+#define QSPIF_FORCE_RESET()          __HAL_RCC_QSPI_FORCE_RESET()
+#define QSPIF_RELEASE_RESET()        __HAL_RCC_QSPI_RELEASE_RESET()
+
+#define QSPIF_CLK_GPIO_CLK_ENABLE()  __HAL_RCC_GPIOF_CLK_ENABLE()
+#define QSPIF_CS_GPIO_CLK_ENABLE()   __HAL_RCC_GPIOG_CLK_ENABLE()
+#define QSPIF_D0_GPIO_CLK_ENABLE()   __HAL_RCC_GPIOF_CLK_ENABLE()
+#define QSPIF_D1_GPIO_CLK_ENABLE()   __HAL_RCC_GPIOF_CLK_ENABLE()
+#define QSPIF_D2_GPIO_CLK_ENABLE()   __HAL_RCC_GPIOF_CLK_ENABLE()
+#define QSPIF_D3_GPIO_CLK_ENABLE()   __HAL_RCC_GPIOF_CLK_ENABLE()
+
 // Enable additional GPIO banks for DRAM...
-#define ENABLE_GPIO_BANK_F
-#define ENABLE_GPIO_BANK_G
-#define ENABLE_GPIO_BANK_H
-#define ENABLE_GPIO_BANK_I
+#define OMV_ENABLE_GPIO_BANK_F
+#define OMV_ENABLE_GPIO_BANK_G
+#define OMV_ENABLE_GPIO_BANK_H
+#define OMV_ENABLE_GPIO_BANK_I
 
 #endif //__OMV_BOARDCONFIG_H__

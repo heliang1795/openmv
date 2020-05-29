@@ -6,9 +6,10 @@
  *
  * This work is licensed under the MIT license, see the file LICENSE for details.
  *
- * Sensor Python module.
+ * HM01B0 driver.
  */
-#ifndef __PY_SENSOR_H__
-#define __PY_SENSOR_H__
-const mp_obj_module_t *py_sensor_init();
-#endif // __PY_SENSOR_H__
+#ifndef __HM01B0_H__
+#define __HM01B0_H__
+#include "sensor.h"
+int hm01b0_init(sensor_t *sensor);
+#endif // __HM01B0_H__

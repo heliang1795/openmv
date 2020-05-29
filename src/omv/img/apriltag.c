@@ -13,6 +13,9 @@
 #include <stdio.h>
 #include "imlib.h"
 
+// Enable new code optimizations
+#define OPTIMIZED
+
 #ifdef IMLIB_ENABLE_APRILTAGS
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
@@ -9591,10 +9594,19 @@ int quad_segment_maxima(apriltag_detector_t *td, zarray_t *cluster, struct line_
 
         for (int iy = 0; iy < sz; iy++) {
             float acc = 0;
-
+#ifdef OPTIMIZED
+            int index = (iy - fsz/2 + sz) % sz;
+            for (int i = 0; i < fsz; i++) {
+                acc += errs[index] * f[i];
+                index++;
+                if (index >= sz) // faster to compare than divide (%)
+                   index -= sz;
+            }
+#else
             for (int i = 0; i < fsz; i++) {
                 acc += errs[(iy + i - fsz / 2 + sz) % sz] * f[i];
             }
+#endif
             y[iy] = acc;
         }
 
@@ -10126,6 +10138,34 @@ int fit_quad(apriltag_detector_t *td, image_u8_t *im, zarray_t *cluster, struct 
     return res;
 }
 
+#ifdef OPTIMIZED
+#define DO_UNIONFIND(dx, dy) if (im->buf[y*s + dy*s + x + dx] == v) { broot = unionfind_get_representative(uf, y*w + dy*w + x + dx); if (aroot != broot) uf->data[broot].parent = aroot; }
+
+static void do_unionfind_line(unionfind_t *uf, image_u8_t *im, int h, int w, int s, int y)
+{
+    assert(y+1 < im->height);
+    uint8_t v, *p;
+    p = &im->buf[y*s + 1];
+    for (int x = 1; x < w - 1; x++) {
+        v = *p++; //im->buf[y*s + x];
+
+        if (v == 127)
+            continue;
+        uint32_t broot;
+        uint32_t aroot = unionfind_get_representative(uf, y*w+x);
+        // (dx,dy) pairs for 8 connectivity:
+        //          (REFERENCE) (1, 0)
+        // (-1, 1)    (0, 1)    (1, 1)
+        //
+        DO_UNIONFIND(1, 0);
+        DO_UNIONFIND(0, 1);
+        if (v == 255) {
+            DO_UNIONFIND(-1, 1);
+            DO_UNIONFIND(1, 1);
+        }
+    }
+}
+#else // not optimized
 #define DO_UNIONFIND(dx, dy) if (im->buf[y*s + dy*s + x + dx] == v) unionfind_connect(uf, y*w + x, y*w + dy*w + x + dx);
 
 static void do_unionfind_line(unionfind_t *uf, image_u8_t *im, int h, int w, int s, int y)
@@ -10151,6 +10191,7 @@ static void do_unionfind_line(unionfind_t *uf, image_u8_t *im, int h, int w, int
     }
 }
 #undef DO_UNIONFIND
+#endif // OPTIMIZED
 
 image_u8_t *threshold(apriltag_detector_t *td, image_u8_t *im)
 {
@@ -10201,22 +10242,44 @@ image_u8_t *threshold(apriltag_detector_t *td, image_u8_t *im)
     // first, collect min/max statistics for each tile
     for (int ty = 0; ty < th; ty++) {
         for (int tx = 0; tx < tw; tx++) {
-            uint8_t max = 0, min = 255;
-
-            for (int dy = 0; dy < tilesz; dy++) {
-
-                for (int dx = 0; dx < tilesz; dx++) {
-
-                    uint8_t v = im->buf[(ty*tilesz+dy)*s + tx*tilesz + dx];
-                    if (v < min)
-                        min = v;
-                    if (v > max)
-                        max = v;
-                }
+#if defined( OPTIMIZED ) && (defined(ARM_MATH_CM7) || defined(ARM_MATH_CM4))
+        uint32_t tmp, max32 = 0, min32 = 0xffffffff;
+        for (int dy=0; dy < tilesz; dy++) {
+            uint32_t v = *(uint32_t *)&im->buf[(ty*tilesz+dy)*s + tx*tilesz];
+            tmp = __USUB8(v, max32);
+            max32 = __SEL(v, max32);
+            tmp = __USUB8(min32, v);
+            min32 = __SEL(v, min32);
+        }
+        // find the min/max of the 4 remaining values
+        tmp = max32 >> 16;
+        __USUB8(max32, tmp); // 4->2
+        max32 = __SEL(max32, tmp);
+        tmp = max32 >> 8;
+        __USUB8(max32, tmp); // 2->1
+        max32 = __SEL(max32, tmp);
+        tmp = min32 >> 16;
+        __USUB8(min32, tmp);
+        min32 = __SEL(tmp, min32); // 4-->2
+        tmp = min32 >> 8;
+        __USUB8(min32, tmp);
+        min32 = __SEL(tmp, min32); // 2-->1
+        im_max[ty*tw+tx] = (uint8_t)max32;
+        im_min[ty*tw+tx] = (uint8_t)min32;
+#else
+        uint8_t max = 0, min = 255;
+        for (int dy = 0; dy < tilesz; dy++) {
+            for (int dx = 0; dx < tilesz; dx++) {
+                uint8_t v = im->buf[(ty*tilesz+dy)*s + tx*tilesz + dx];
+                if (v < min)
+                    min = v;
+                if (v > max)
+                    max = v;
             }
-
-            im_max[ty*tw+tx] = max;
-            im_min[ty*tw+tx] = min;
+        }
+        im_max[ty*tw+tx] = max;
+        im_min[ty*tw+tx] = min;
+#endif
         }
     }
 
@@ -10227,6 +10290,97 @@ image_u8_t *threshold(apriltag_detector_t *td, image_u8_t *im)
         uint8_t *im_max_tmp = fb_alloc(tw*th*sizeof(uint8_t), FB_ALLOC_NO_HINT);
         uint8_t *im_min_tmp = fb_alloc(tw*th*sizeof(uint8_t), FB_ALLOC_NO_HINT);
 
+#ifdef OPTIMIZED
+        // Checking boundaries on every pixel wastes significant time; just break it into 5 pieces
+        // (center, top, bottom, left right)
+        // First pass does the entire center area
+        int ty, tx, dy, dx;
+        for (ty = 1; ty < th-1; ty++) {
+            for (tx = 1; tx < tw-1; tx++) {
+                uint8_t max = 0, min = 255;
+                for (dy = -1; dy <= 1; dy++) {
+                    for (dx = -1; dx <= 1; dx++) {
+                        uint8_t m = im_max[(ty+dy)*tw+tx+dx];
+                        if (m > max)
+                            max = m;
+                        m = im_min[(ty+dy)*tw+tx+dx];
+                        if (m < min)
+                            min = m;
+                    }
+                }
+                im_max_tmp[ty*tw + tx] = max;
+                im_min_tmp[ty*tw + tx] = min;
+            }
+        }
+        // top edge
+        ty = 0;
+        for (tx = 1; tx < tw-1; tx++) {
+            uint8_t max = 0, min = 255;
+            for (dy = 0; dy <= 1; dy++) {
+                for (dx = -1; dx <= 1; dx++) {
+                    uint8_t m = im_max[(ty+dy)*tw+tx+dx];
+                    if (m > max)
+                        max = m;
+                    m = im_min[(ty+dy)*tw+tx+dx];
+                    if (m < min)
+                        min = m;
+                }
+            }
+            im_max_tmp[ty*tw + tx] = max;
+            im_min_tmp[ty*tw + tx] = min;
+        }
+        // bottom edge
+        ty = th-1;
+        for (tx = 1; tx < tw-1; tx++) {
+            uint8_t max = 0, min = 255;
+            for (dy = -1; dy <= 0; dy++) {
+                for (dx = -1; dx <= 1; dx++) {
+                    uint8_t m = im_max[(ty+dy)*tw+tx+dx];
+                    if (m > max)
+                        max = m;
+                    m = im_min[(ty+dy)*tw+tx+dx];
+                    if (m < min)
+                        min = m;
+                }
+            }
+            im_max_tmp[ty*tw + tx] = max;
+            im_min_tmp[ty*tw + tx] = min;
+        }
+        // left edge
+        tx = 0;
+        for (ty = 1; ty < th-1; ty++) {
+            uint8_t max = 0, min = 255;
+            for (dy = -1; dy <= 1; dy++) {
+                for (dx = 0; dx <= 1; dx++) {
+                    uint8_t m = im_max[(ty+dy)*tw+tx+dx];
+                    if (m > max)
+                        max = m;
+                    m = im_min[(ty+dy)*tw+tx+dx];
+                    if (m < min)
+                        min = m;
+                }
+            }
+            im_max_tmp[ty*tw + tx] = max;
+            im_min_tmp[ty*tw + tx] = min;
+        }
+        // right edge
+        tx = tw-1;
+        for (ty = 1; ty < th-1; ty++) {
+            uint8_t max = 0, min = 255;
+            for (dy = -1; dy <= 1; dy++) {
+                for (dx = -1; dx <= 0; dx++) {
+                    uint8_t m = im_max[(ty+dy)*tw+tx+dx];
+                    if (m > max)
+                        max = m;
+                    m = im_min[(ty+dy)*tw+tx+dx];
+                    if (m < min)
+                        min = m;
+                }
+            }
+            im_max_tmp[ty*tw + tx] = max;
+            im_min_tmp[ty*tw + tx] = min;
+        }
+#else
         for (int ty = 0; ty < th; ty++) {
             for (int tx = 0; tx < tw; tx++) {
                 uint8_t max = 0, min = 255;
@@ -10251,12 +10405,52 @@ image_u8_t *threshold(apriltag_detector_t *td, image_u8_t *im)
                 im_min_tmp[ty*tw + tx] = min;
             }
         }
+#endif
         memcpy(im_max, im_max_tmp, tw*th*sizeof(uint8_t));
         memcpy(im_min, im_min_tmp, tw*th*sizeof(uint8_t));
         fb_free(); // im_min_tmp
         fb_free(); // im_max_tmp
     }
+#if defined( OPTIMIZED ) && (defined(ARM_MATH_CM7) || defined(ARM_MATH_CM4))
+    if ((s & 0x3) == 0 && tilesz == 4) // if each line is a multiple of 4, we can do this faster
+    {
+        const uint32_t lowcontrast = 0x7f7f7f7f;
+        const int s32 = s/4; // pitch for 32-bit values
+        const int minmax = td->qtp.min_white_black_diff; // local var to avoid constant dereferencing of the pointer
+        for (int ty = 0; ty < th; ty++) {
+            for (int tx = 0; tx < tw; tx++) {
 
+                int min = im_min[ty*tw + tx];
+                int max = im_max[ty*tw + tx];
+
+                // low contrast region? (no edges)
+                if (max - min < minmax) {
+                    uint32_t *d32 = (uint32_t *)&threshim->buf[ty*tilesz*s + tx*tilesz];
+                    d32[0] = d32[s32] = d32[s32*2] = d32[s32*3] = lowcontrast;
+                    continue;
+                } // if low contrast
+                    // otherwise, actually threshold this tile.
+
+                    // argument for biasing towards dark; specular highlights
+                    // can be substantially brighter than white tag parts
+                    uint32_t thresh32 = (min + (max - min) / 2) + 1; // plus 1 to make GT become GE for the __USUB8 and __SEL instructions
+                    uint32_t u32tmp;
+                    thresh32 *= 0x01010101; // spread value to all 4 slots
+                        for (int dy = 0; dy < tilesz; dy++) {
+                        uint32_t *d32 = (uint32_t *)&threshim->buf[(ty*tilesz+dy)*s + tx*tilesz];
+                            uint32_t *s32 = (uint32_t *)&im->buf[(ty*tilesz+dy)*s + tx*tilesz];
+                            // process 4 pixels at a time
+                            u32tmp = s32[0];
+                            u32tmp = __USUB8(u32tmp, thresh32);
+                            u32tmp = __SEL(0xffffffff, 0x00000000); // 4 thresholded pixels
+                            d32[0] = u32tmp;
+                    } // dy
+            } // tx
+        } // ty
+    }
+    else // need to do it the slow way
+#endif // OPTIMIZED
+    {
     for (int ty = 0; ty < th; ty++) {
         for (int tx = 0; tx < tw; tx++) {
 
@@ -10297,6 +10491,7 @@ image_u8_t *threshold(apriltag_detector_t *td, image_u8_t *im)
                 }
             }
         }
+    }
     }
 
     // we skipped over the non-full-sized tiles above. Fix those now.
@@ -10510,7 +10705,7 @@ zarray_t *apriltag_quad_thresh(apriltag_detector_t *td, image_u8_t *im, bool ove
         while (entry) {
           // free any leaked cluster (zarray_add_fail_ok)
           bool leaked = true;
-          for (int j = 0; j < sz; j++) {
+          for (int j = 0; j < sz && leaked; j++) {
               zarray_t *cluster;
               zarray_get(clusters, j, &cluster);
               leaked &= entry->cluster != cluster;
@@ -12132,21 +12327,26 @@ void imlib_find_rects(list_t *out, image_t *ptr, rectangle_t *roi, uint32_t thre
 // http://jepsonsblog.blogspot.com/2012/11/rotation-in-3d-using-opencvs.html
 void imlib_rotation_corr(image_t *img, float x_rotation, float y_rotation, float z_rotation,
                          float x_translation, float y_translation,
-                         float zoom)
+                         float zoom, float fov, float *corners)
 {
-    umm_init_x(4000); // 200 20 byte heap blocks...
+    // Create a tmp copy of the image to pull pixels from.
+    size_t size = image_size(img);
+    void *data = fb_alloc(size, FB_ALLOC_NO_HINT);
+    memcpy(data, img->data, size);
+    memset(img->data, 0, size);
 
-    float fov = (M_PI_2 * 2) / 3; // 60 deg FOV
-    float fov_2 = fov / 2.0;
-    float d = fast_sqrtf((img->w * img->w) + (img->h * img->h));
-    float h = d / (2.0 * tanf(fov_2));
-    float h_z = h * zoom;
+    umm_init_x(fb_avail());
+
+    int w = img->w;
+    int h = img->h;
+    float z = (fast_sqrtf((w * w) + (h * h)) / 2) / tanf(fov / 2);
+    float z_z = z * zoom;
 
     matd_t *A1 = matd_create(4, 3);
-    MATD_EL(A1, 0, 0) = 1;  MATD_EL(A1, 0, 1) = 0;  MATD_EL(A1, 0, 2) = -img->w / 2.0;
-    MATD_EL(A1, 1, 0) = 0;  MATD_EL(A1, 1, 1) = 1;  MATD_EL(A1, 1, 2) = -img->h / 2.0;
+    MATD_EL(A1, 0, 0) = 1;  MATD_EL(A1, 0, 1) = 0;  MATD_EL(A1, 0, 2) = -w / 2;
+    MATD_EL(A1, 1, 0) = 0;  MATD_EL(A1, 1, 1) = 1;  MATD_EL(A1, 1, 2) = -h / 2;
     MATD_EL(A1, 2, 0) = 0;  MATD_EL(A1, 2, 1) = 0;  MATD_EL(A1, 2, 2) = 0;
-    MATD_EL(A1, 3, 0) = 0;  MATD_EL(A1, 3, 1) = 0;  MATD_EL(A1, 3, 2) = 1; // needed for h translation
+    MATD_EL(A1, 3, 0) = 0;  MATD_EL(A1, 3, 1) = 0;  MATD_EL(A1, 3, 2) = 1; // needed for z translation
 
     matd_t *RX = matd_create(4, 4);
     MATD_EL(RX, 0, 0) = 1;  MATD_EL(RX, 0, 1) = 0;                  MATD_EL(RX, 0, 2) = 0;                  MATD_EL(RX, 0, 3) = 0;
@@ -12171,98 +12371,208 @@ void imlib_rotation_corr(image_t *img, float x_rotation, float y_rotation, float
     matd_t *T = matd_create(4, 4);
     MATD_EL(T, 0, 0) = 1;   MATD_EL(T, 0, 1) = 0;   MATD_EL(T, 0, 2) = 0;   MATD_EL(T, 0, 3) = x_translation;
     MATD_EL(T, 1, 0) = 0;   MATD_EL(T, 1, 1) = 1;   MATD_EL(T, 1, 2) = 0;   MATD_EL(T, 1, 3) = y_translation;
-    MATD_EL(T, 2, 0) = 0;   MATD_EL(T, 2, 1) = 0;   MATD_EL(T, 2, 2) = 1;   MATD_EL(T, 2, 3) = h;
+    MATD_EL(T, 2, 0) = 0;   MATD_EL(T, 2, 1) = 0;   MATD_EL(T, 2, 2) = 1;   MATD_EL(T, 2, 3) = z;
     MATD_EL(T, 3, 0) = 0;   MATD_EL(T, 3, 1) = 0;   MATD_EL(T, 3, 2) = 0;   MATD_EL(T, 3, 3) = 1;
 
     matd_t *A2 = matd_create(3, 4);
-    MATD_EL(A2, 0, 0) = h_z;    MATD_EL(A2, 0, 1) = 0;      MATD_EL(A2, 0, 2) = img->w / 2.0;   MATD_EL(A2, 0, 3) = 0;
-    MATD_EL(A2, 1, 0) = 0;      MATD_EL(A2, 1, 1) = h_z;    MATD_EL(A2, 1, 2) = img->h / 2.0;   MATD_EL(A2, 1, 3) = 0;
-    MATD_EL(A2, 2, 0) = 0;      MATD_EL(A2, 2, 1) = 0;      MATD_EL(A2, 2, 2) = 1;              MATD_EL(A2, 2, 3) = 0;
+    MATD_EL(A2, 0, 0) = z_z;    MATD_EL(A2, 0, 1) = 0;      MATD_EL(A2, 0, 2) = w / 2;   MATD_EL(A2, 0, 3) = 0;
+    MATD_EL(A2, 1, 0) = 0;      MATD_EL(A2, 1, 1) = z_z;    MATD_EL(A2, 1, 2) = h / 2;   MATD_EL(A2, 1, 3) = 0;
+    MATD_EL(A2, 2, 0) = 0;      MATD_EL(A2, 2, 1) = 0;      MATD_EL(A2, 2, 2) = 1;       MATD_EL(A2, 2, 3) = 0;
 
     matd_t *T1 = matd_op("M*M", R, A1);
     matd_t *T2 = matd_op("M*M", T, T1);
     matd_t *T3 = matd_op("M*M", A2, T2);
     matd_t *T4 = matd_inverse(T3);
 
-    switch(img->bpp) {
-        case IMAGE_BPP_BINARY: {
-            // Create a temp copy of the image to pull pixels from.
-            uint32_t *tmp = fb_alloc(((img->w + UINT32_T_MASK) >> UINT32_T_SHIFT) * img->h, FB_ALLOC_NO_HINT);
-            memcpy(tmp, img->data, ((img->w + UINT32_T_MASK) >> UINT32_T_SHIFT) * img->h);
-            memset(img->data, 0, ((img->w + UINT32_T_MASK) >> UINT32_T_SHIFT) * img->h);
+    if (T4 && corners) {
+        float corr[4];
+        zarray_t *correspondences = zarray_create(sizeof(float[4]));
 
-            if (T4) for (int y = 0, yy = img->h; y < yy; y++) {
-                uint32_t *row_ptr = IMAGE_COMPUTE_BINARY_PIXEL_ROW_PTR(img, y);
-                for (int x = 0, xx = img->w; x < xx; x++) {
-                    float sourceX, sourceY; homography_project(T4, x, y, &sourceX, &sourceY);
-                    int sourceX2 = round(sourceX);
-                    int sourceY2 = round(sourceY);
+        corr[0] = 0;
+        corr[1] = 0;
+        corr[2] = corners[0];
+        corr[3] = corners[1];
+        zarray_add(correspondences, &corr);
 
-                    if ((0 <= sourceX2) && (sourceX2 < img->w) && (0 <= sourceY2) && (sourceY2 < img->h)) {
-                        uint32_t *ptr = tmp + (((img->w + UINT32_T_MASK) >> UINT32_T_SHIFT) * sourceY2);
-                        int pixel = IMAGE_GET_BINARY_PIXEL_FAST(ptr, sourceX2);
-                        IMAGE_PUT_BINARY_PIXEL_FAST(row_ptr, x, pixel);
-                    }
-                }
-            }
+        corr[0] = w - 1;
+        corr[1] = 0;
+        corr[2] = corners[2];
+        corr[3] = corners[3];
+        zarray_add(correspondences, &corr);
 
-            fb_free();
-            break;
+        corr[0] = w - 1;
+        corr[1] = h - 1;
+        corr[2] = corners[4];
+        corr[3] = corners[5];
+        zarray_add(correspondences, &corr);
+
+        corr[0] = 0;
+        corr[1] = h - 1;
+        corr[2] = corners[6];
+        corr[3] = corners[7];
+        zarray_add(correspondences, &corr);
+
+        matd_t *H = homography_compute(correspondences, HOMOGRAPHY_COMPUTE_FLAG_INVERSE);
+
+        if (!H) { // try again...
+            H = homography_compute(correspondences, HOMOGRAPHY_COMPUTE_FLAG_SVD);
         }
-        case IMAGE_BPP_GRAYSCALE: {
-            // Create a temp copy of the image to pull pixels from.
-            uint8_t *tmp = fb_alloc(img->w * img->h * sizeof(uint8_t), FB_ALLOC_NO_HINT);
-            memcpy(tmp, img->data, img->w * img->h * sizeof(uint8_t));
-            memset(img->data, 0, img->w * img->h * sizeof(uint8_t));
 
-            if (T4) for (int y = 0, yy = img->h; y < yy; y++) {
-                uint8_t *row_ptr = IMAGE_COMPUTE_GRAYSCALE_PIXEL_ROW_PTR(img, y);
-                for (int x = 0, xx = img->w; x < xx; x++) {
-                    float sourceX, sourceY; homography_project(T4, x, y, &sourceX, &sourceY);
-                    int sourceX2 = round(sourceX);
-                    int sourceY2 = round(sourceY);
-
-                    if ((0 <= sourceX2) && (sourceX2 < img->w) && (0 <= sourceY2) && (sourceY2 < img->h)) {
-                        uint8_t *ptr = tmp + (img->w * sourceY2);
-                        int pixel = IMAGE_GET_GRAYSCALE_PIXEL_FAST(ptr, sourceX2);
-                        IMAGE_PUT_GRAYSCALE_PIXEL_FAST(row_ptr, x, pixel);
-                    }
-                }
-            }
-
-            fb_free();
-            break;
+        if (H) {
+            matd_t *T5 = matd_op("M*M", H, T4);
+            matd_destroy(H);
+            matd_destroy(T4);
+            T4 = T5;
         }
-        case IMAGE_BPP_RGB565: {
-            // Create a temp copy of the image to pull pixels from.
-            uint16_t *tmp = fb_alloc(img->w * img->h * sizeof(uint16_t), FB_ALLOC_NO_HINT);
-            memcpy(tmp, img->data, img->w * img->h * sizeof(uint16_t));
-            memset(img->data, 0, img->w * img->h * sizeof(uint16_t));
 
-            if (T4) for (int y = 0, yy = img->h; y < yy; y++) {
-                uint16_t *row_ptr = IMAGE_COMPUTE_RGB565_PIXEL_ROW_PTR(img, y);
-                for (int x = 0, xx = img->w; x < xx; x++) {
-                    float sourceX, sourceY; homography_project(T4, x, y, &sourceX, &sourceY);
-                    int sourceX2 = round(sourceX);
-                    int sourceY2 = round(sourceY);
-
-                    if ((0 <= sourceX2) && (sourceX2 < img->w) && (0 <= sourceY2) && (sourceY2 < img->h)) {
-                        uint16_t *ptr = tmp + (img->w * sourceY2);
-                        int pixel = IMAGE_GET_RGB565_PIXEL_FAST(ptr, sourceX2);
-                        IMAGE_PUT_RGB565_PIXEL_FAST(row_ptr, x, pixel);
-                    }
-                }
-            }
-
-            fb_free();
-            break;
-        }
-        default: {
-            break;
-        }
+        zarray_destroy(correspondences);
     }
 
-    if (T4) matd_destroy(T4);
+    if (T4) {
+        float T4_00 = MATD_EL(T4, 0, 0), T4_01 = MATD_EL(T4, 0, 1), T4_02 = MATD_EL(T4, 0, 2);
+        float T4_10 = MATD_EL(T4, 1, 0), T4_11 = MATD_EL(T4, 1, 1), T4_12 = MATD_EL(T4, 1, 2);
+        float T4_20 = MATD_EL(T4, 2, 0), T4_21 = MATD_EL(T4, 2, 1), T4_22 = MATD_EL(T4, 2, 2);
+
+        if ((fast_fabsf(T4_20) < MATD_EPS) && (fast_fabsf(T4_21) < MATD_EPS)) { // warp affine
+            T4_00 /= T4_22;
+            T4_01 /= T4_22;
+            T4_02 /= T4_22;
+            T4_10 /= T4_22;
+            T4_11 /= T4_22;
+            T4_12 /= T4_22;
+            switch(img->bpp) {
+                case IMAGE_BPP_BINARY: {
+                    uint32_t *tmp = (uint32_t *) data;
+
+                    for (int y = 0, yy = h; y < yy; y++) {
+                        uint32_t *row_ptr = IMAGE_COMPUTE_BINARY_PIXEL_ROW_PTR(img, y);
+                        for (int x = 0, xx = w; x < xx; x++) {
+                            int sourceX = fast_roundf(T4_00*x + T4_01*y + T4_02);
+                            int sourceY = fast_roundf(T4_10*x + T4_11*y + T4_12);
+
+                            if ((0 <= sourceX) && (sourceX < w) && (0 <= sourceY) && (sourceY < h)) {
+                                uint32_t *ptr = tmp + (((w + UINT32_T_MASK) >> UINT32_T_SHIFT) * sourceY);
+                                int pixel = IMAGE_GET_BINARY_PIXEL_FAST(ptr, sourceX);
+                                IMAGE_PUT_BINARY_PIXEL_FAST(row_ptr, x, pixel);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case IMAGE_BPP_GRAYSCALE: {
+                    uint8_t *tmp = (uint8_t *) data;
+
+                    for (int y = 0, yy = h; y < yy; y++) {
+                        uint8_t *row_ptr = IMAGE_COMPUTE_GRAYSCALE_PIXEL_ROW_PTR(img, y);
+                        for (int x = 0, xx = w; x < xx; x++) {
+                            int sourceX = fast_roundf(T4_00*x + T4_01*y + T4_02);
+                            int sourceY = fast_roundf(T4_10*x + T4_11*y + T4_12);
+
+                            if ((0 <= sourceX) && (sourceX < w) && (0 <= sourceY) && (sourceY < h)) {
+                                uint8_t *ptr = tmp + (w * sourceY);
+                                int pixel = IMAGE_GET_GRAYSCALE_PIXEL_FAST(ptr, sourceX);
+                                IMAGE_PUT_GRAYSCALE_PIXEL_FAST(row_ptr, x, pixel);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case IMAGE_BPP_RGB565: {
+                    uint16_t *tmp = (uint16_t *) data;
+
+                    for (int y = 0, yy = h; y < yy; y++) {
+                        uint16_t *row_ptr = IMAGE_COMPUTE_RGB565_PIXEL_ROW_PTR(img, y);
+                        for (int x = 0, xx = w; x < xx; x++) {
+                            int sourceX = fast_roundf(T4_00*x + T4_01*y + T4_02);
+                            int sourceY = fast_roundf(T4_10*x + T4_11*y + T4_12);
+
+                            if ((0 <= sourceX) && (sourceX < w) && (0 <= sourceY) && (sourceY < h)) {
+                                uint16_t *ptr = tmp + (w * sourceY);
+                                int pixel = IMAGE_GET_RGB565_PIXEL_FAST(ptr, sourceX);
+                                IMAGE_PUT_RGB565_PIXEL_FAST(row_ptr, x, pixel);
+                            }
+                        }
+                    }
+                    break;
+                }
+                default: {
+                    break;
+                }
+            }
+        } else { // warp persepective
+            switch(img->bpp) {
+                case IMAGE_BPP_BINARY: {
+                    uint32_t *tmp = (uint32_t *) data;
+
+                    for (int y = 0, yy = h; y < yy; y++) {
+                        uint32_t *row_ptr = IMAGE_COMPUTE_BINARY_PIXEL_ROW_PTR(img, y);
+                        for (int x = 0, xx = w; x < xx; x++) {
+                            float xxx = T4_00*x + T4_01*y + T4_02;
+                            float yyy = T4_10*x + T4_11*y + T4_12;
+                            float zzz = T4_20*x + T4_21*y + T4_22;
+                            int sourceX = fast_roundf(xxx / zzz);
+                            int sourceY = fast_roundf(yyy / zzz);
+
+                            if ((0 <= sourceX) && (sourceX < w) && (0 <= sourceY) && (sourceY < h)) {
+                                uint32_t *ptr = tmp + (((w + UINT32_T_MASK) >> UINT32_T_SHIFT) * sourceY);
+                                int pixel = IMAGE_GET_BINARY_PIXEL_FAST(ptr, sourceX);
+                                IMAGE_PUT_BINARY_PIXEL_FAST(row_ptr, x, pixel);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case IMAGE_BPP_GRAYSCALE: {
+                    uint8_t *tmp = (uint8_t *) data;
+
+                    for (int y = 0, yy = h; y < yy; y++) {
+                        uint8_t *row_ptr = IMAGE_COMPUTE_GRAYSCALE_PIXEL_ROW_PTR(img, y);
+                        for (int x = 0, xx = w; x < xx; x++) {
+                            float xxx = T4_00*x + T4_01*y + T4_02;
+                            float yyy = T4_10*x + T4_11*y + T4_12;
+                            float zzz = T4_20*x + T4_21*y + T4_22;
+                            int sourceX = fast_roundf(xxx / zzz);
+                            int sourceY = fast_roundf(yyy / zzz);
+
+                            if ((0 <= sourceX) && (sourceX < w) && (0 <= sourceY) && (sourceY < h)) {
+                                uint8_t *ptr = tmp + (w * sourceY);
+                                int pixel = IMAGE_GET_GRAYSCALE_PIXEL_FAST(ptr, sourceX);
+                                IMAGE_PUT_GRAYSCALE_PIXEL_FAST(row_ptr, x, pixel);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case IMAGE_BPP_RGB565: {
+                    uint16_t *tmp = (uint16_t *) data;
+
+                    for (int y = 0, yy = h; y < yy; y++) {
+                        uint16_t *row_ptr = IMAGE_COMPUTE_RGB565_PIXEL_ROW_PTR(img, y);
+                        for (int x = 0, xx = w; x < xx; x++) {
+                            float xxx = T4_00*x + T4_01*y + T4_02;
+                            float yyy = T4_10*x + T4_11*y + T4_12;
+                            float zzz = T4_20*x + T4_21*y + T4_22;
+                            int sourceX = fast_roundf(xxx / zzz);
+                            int sourceY = fast_roundf(yyy / zzz);
+
+                            if ((0 <= sourceX) && (sourceX < w) && (0 <= sourceY) && (sourceY < h)) {
+                                uint16_t *ptr = tmp + (w * sourceY);
+                                int pixel = IMAGE_GET_RGB565_PIXEL_FAST(ptr, sourceX);
+                                IMAGE_PUT_RGB565_PIXEL_FAST(row_ptr, x, pixel);
+                            }
+                        }
+                    }
+                    break;
+                }
+                default: {
+                    break;
+                }
+            }
+        }
+
+        matd_destroy(T4);
+    }
+
     matd_destroy(T3);
     matd_destroy(T2);
     matd_destroy(T1);
@@ -12275,6 +12585,8 @@ void imlib_rotation_corr(image_t *img, float x_rotation, float y_rotation, float
     matd_destroy(A1);
 
     fb_free(); // umm_init_x();
+
+    fb_free();
 }
 #endif //IMLIB_ENABLE_ROTATION_CORR
 #pragma GCC diagnostic pop

@@ -22,28 +22,28 @@ MP_DEFINE_CONST_FUN_OBJ_KW(py_func_unavailable_obj, 1, py_func_unavailable);
 image_t *py_helper_arg_to_image_mutable(const mp_obj_t arg)
 {
     image_t *arg_img = py_image_cobj(arg);
-    PY_ASSERT_TRUE_MSG(IMAGE_IS_MUTABLE(arg_img), "Image format is not supported!");
+    PY_ASSERT_TRUE_MSG(IMAGE_IS_MUTABLE(arg_img), "Image is not mutable!");
     return arg_img;
 }
 
 image_t *py_helper_arg_to_image_mutable_bayer(const mp_obj_t arg)
 {
     image_t *arg_img = py_image_cobj(arg);
-    PY_ASSERT_TRUE_MSG(IMAGE_IS_MUTABLE_BAYER(arg_img), "Image format is not supported!");
+    PY_ASSERT_TRUE_MSG(IMAGE_IS_MUTABLE_BAYER(arg_img), "Image is not mutable!");
     return arg_img;
 }
 
 image_t *py_helper_arg_to_image_grayscale(const mp_obj_t arg)
 {
     image_t *arg_img = py_image_cobj(arg);
-    PY_ASSERT_TRUE_MSG(arg_img->bpp == IMAGE_BPP_GRAYSCALE, "Image format is not supported!");
+    PY_ASSERT_TRUE_MSG(arg_img->bpp == IMAGE_BPP_GRAYSCALE, "Image is not grayscale!");
     return arg_img;
 }
 
 image_t *py_helper_arg_to_image_color(const mp_obj_t arg)
 {
     image_t *arg_img = py_image_cobj(arg);
-    PY_ASSERT_TRUE_MSG(arg_img->bpp == IMAGE_BPP_RGB565, "Image format is not supported!");
+    PY_ASSERT_TRUE_MSG(arg_img->bpp == IMAGE_BPP_RGB565, "Image is not RGB565!");
     return arg_img;
 }
 
@@ -65,6 +65,18 @@ image_t *py_helper_keyword_to_image_mutable_mask(uint n_args, const mp_obj_t *ar
                                                  mp_map_t *kw_args)
 {
     return py_helper_keyword_to_image_mutable(n_args, args, arg_index, kw_args, MP_OBJ_NEW_QSTR(MP_QSTR_mask), NULL);
+}
+
+image_t *py_helper_keyword_to_image_mutable_color_palette(uint n_args, const mp_obj_t *args, uint arg_index,
+                                                          mp_map_t *kw_args)
+{
+    return py_helper_keyword_to_image_mutable(n_args, args, arg_index, kw_args, MP_OBJ_NEW_QSTR(MP_QSTR_color_palette), NULL);
+}
+
+image_t *py_helper_keyword_to_image_mutable_alpha_palette(uint n_args, const mp_obj_t *args, uint arg_index,
+                                                          mp_map_t *kw_args)
+{
+    return py_helper_keyword_to_image_mutable(n_args, args, arg_index, kw_args, MP_OBJ_NEW_QSTR(MP_QSTR_alpha_palette), NULL);
 }
 
 void py_helper_keyword_rectangle(image_t *img, uint n_args, const mp_obj_t *args, uint arg_index,
@@ -124,6 +136,20 @@ int py_helper_keyword_int(uint n_args, const mp_obj_t *args, uint arg_index,
     return default_val;
 }
 
+int py_helper_keyword_int_maybe(uint n_args, const mp_obj_t *args, uint arg_index,
+                                mp_map_t *kw_args, mp_obj_t kw, int* value)
+{
+    mp_map_elem_t *kw_arg = mp_map_lookup(kw_args, kw, MP_MAP_LOOKUP);
+
+    if (kw_arg) {
+        return mp_obj_get_int_maybe(kw_arg->value, value);
+    } else if (n_args > arg_index) {
+        return mp_obj_get_int_maybe(args[arg_index], value);
+    }
+
+    return false;
+}
+
 float py_helper_keyword_float(uint n_args, const mp_obj_t *args, uint arg_index,
                               mp_map_t *kw_args, mp_obj_t kw, float default_val)
 {
@@ -168,6 +194,38 @@ void py_helper_keyword_float_array(uint n_args, const mp_obj_t *args, uint arg_i
         mp_obj_get_array_fixed_n(args[arg_index], size, &arg_array);
         for (int i = 0; i < size; i++) x[i] = mp_obj_get_float(arg_array[i]);
     }
+}
+
+float *py_helper_keyword_corner_array(uint n_args, const mp_obj_t *args, uint arg_index,
+                                      mp_map_t *kw_args, mp_obj_t kw)
+{
+    mp_map_elem_t *kw_arg = mp_map_lookup(kw_args, kw, MP_MAP_LOOKUP);
+
+    if (kw_arg) {
+        mp_obj_t *arg_array;
+        mp_obj_get_array_fixed_n(kw_arg->value, 4, &arg_array);
+        float *corners = xalloc(sizeof(float) * 8);
+        for (int i = 0; i < 4; i++) {
+            mp_obj_t *arg_point;
+            mp_obj_get_array_fixed_n(arg_array[i], 2, &arg_point);
+            corners[(i*2)+0] = mp_obj_get_float(arg_point[0]);
+            corners[(i*2)+1] = mp_obj_get_float(arg_point[1]);
+        }
+        return corners;
+    } else if (n_args > arg_index) {
+        mp_obj_t *arg_array;
+        mp_obj_get_array_fixed_n(args[arg_index], 4, &arg_array);
+        float *corners = xalloc(sizeof(float) * 8);
+        for (int i = 0; i < 4; i++) {
+            mp_obj_t *arg_point;
+            mp_obj_get_array_fixed_n(arg_array[i], 2, &arg_point);
+            corners[(i*2)+0] = mp_obj_get_float(arg_point[0]);
+            corners[(i*2)+1] = mp_obj_get_float(arg_point[1]);
+        }
+        return corners;
+    }
+
+    return NULL;
 }
 
 uint py_helper_consume_array(uint n_args, const mp_obj_t *args, uint arg_index, size_t len, const mp_obj_t **items)

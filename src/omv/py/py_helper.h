@@ -21,18 +21,26 @@ image_t *py_helper_keyword_to_image_mutable(uint n_args, const mp_obj_t *args, u
                                             mp_map_t *kw_args, mp_obj_t kw, image_t *default_val);
 image_t *py_helper_keyword_to_image_mutable_mask(uint n_args, const mp_obj_t *args, uint arg_index,
                                                  mp_map_t *kw_args);
+image_t *py_helper_keyword_to_image_mutable_color_palette(uint n_args, const mp_obj_t *args, uint arg_index,
+                                                          mp_map_t *kw_args);
+image_t *py_helper_keyword_to_image_mutable_alpha_palette(uint n_args, const mp_obj_t *args, uint arg_index,
+                                                          mp_map_t *kw_args);
 void py_helper_keyword_rectangle(image_t *img, uint n_args, const mp_obj_t *args, uint arg_index,
                                  mp_map_t *kw_args, mp_obj_t kw, rectangle_t *r);
 void py_helper_keyword_rectangle_roi(image_t *img, uint n_args, const mp_obj_t *args, uint arg_index,
                                      mp_map_t *kw_args, rectangle_t *r);
 int py_helper_keyword_int(uint n_args, const mp_obj_t *args, uint arg_index,
                           mp_map_t *kw_args, mp_obj_t kw, int default_val);
+int py_helper_keyword_int_maybe(uint n_args, const mp_obj_t *args, uint arg_index,
+                                mp_map_t *kw_args, mp_obj_t kw, int* value);
 float py_helper_keyword_float(uint n_args, const mp_obj_t *args, uint arg_index,
                               mp_map_t *kw_args, mp_obj_t kw, float default_val);
 void py_helper_keyword_int_array(uint n_args, const mp_obj_t *args, uint arg_index,
                                  mp_map_t *kw_args, mp_obj_t kw, int *x, int size);
 void py_helper_keyword_float_array(uint n_args, const mp_obj_t *args, uint arg_index,
                                    mp_map_t *kw_args, mp_obj_t kw, float *x, int size);
+float *py_helper_keyword_corner_array(uint n_args, const mp_obj_t *args, uint arg_index,
+                                      mp_map_t *kw_args, mp_obj_t kw);
 uint py_helper_consume_array(uint n_args, const mp_obj_t *args, uint arg_index, size_t len, const mp_obj_t **items);
 int py_helper_keyword_color(image_t *img, uint n_args, const mp_obj_t *args, uint arg_index,
                             mp_map_t *kw_args, int default_val);

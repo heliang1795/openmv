@@ -53,6 +53,22 @@
 // FB Heap Block Size
 #define OMV_UMM_BLOCK_SIZE      16
 
+// Core VBAT for selftests
+#define OMV_CORE_VBAT           "3.3"
+
+//PLL1 192MHz/48MHz
+#define OMV_OSC_PLL1M           (12)
+#define OMV_OSC_PLL1N           (384)
+#define OMV_OSC_PLL1P           (2)
+#define OMV_OSC_PLL1Q           (8)
+
+// HSE/HSI/CSI State
+#define OMV_OSC_HSE_STATE       (RCC_HSE_ON)
+#define OMV_OSC_HSI_STATE       (RCC_HSI_OFF)
+
+// Flash Latency
+#define OMV_FLASH_LATENCY       (FLASH_LATENCY_7)
+
 // Linker script constants (see the linker script template stm32fxxx.ld.S).
 // Note: fb_alloc is a stack-based, dynamically allocated memory on FB.
 // The maximum available fb_alloc memory = FB_ALLOC_SIZE + FB_SIZE - (w*h*bpp).
@@ -91,6 +107,21 @@
 #define SCCB_PORT               (GPIOB)
 #define SCCB_SCL_PIN            (GPIO_PIN_8)
 #define SCCB_SDA_PIN            (GPIO_PIN_9)
+#define SCCB_TIMING             (I2C_TIMING_STANDARD) // ignored
+#define SCCB_FORCE_RESET()      __HAL_RCC_I2C1_FORCE_RESET()
+#define SCCB_RELEASE_RESET()    __HAL_RCC_I2C1_RELEASE_RESET()
+
+/* FIR I2C */
+#define FIR_I2C                 (I2C2)
+#define FIR_I2C_AF              (GPIO_AF4_I2C2)
+#define FIR_I2C_CLK_ENABLE()    __I2C2_CLK_ENABLE()
+#define FIR_I2C_CLK_DISABLE()   __I2C2_CLK_DISABLE()
+#define FIR_I2C_PORT            (GPIOB)
+#define FIR_I2C_SCL_PIN         (GPIO_PIN_10)
+#define FIR_I2C_SDA_PIN         (GPIO_PIN_11)
+#define FIR_I2C_TIMING          (I2C_TIMING_FULL)
+#define FIR_I2C_FORCE_RESET()   __HAL_RCC_I2C2_FORCE_RESET()
+#define FIR_I2C_RELEASE_RESET() __HAL_RCC_I2C2_RELEASE_RESET()
 
 /* DCMI */
 #define DCMI_TIM                (TIM1)
@@ -169,19 +200,19 @@
 #define WINC_CS_LOW()           HAL_GPIO_WritePin(WINC_CS_PORT, WINC_CS_PIN, GPIO_PIN_RESET)
 #define WINC_CS_HIGH()          HAL_GPIO_WritePin(WINC_CS_PORT, WINC_CS_PIN, GPIO_PIN_SET)
 
-#define I2C_PORT                GPIOB
-#define I2C_SIOC_PIN            GPIO_PIN_10
-#define I2C_SIOD_PIN            GPIO_PIN_11
+#define SOFT_I2C_PORT                GPIOB
+#define SOFT_I2C_SIOC_PIN            GPIO_PIN_10
+#define SOFT_I2C_SIOD_PIN            GPIO_PIN_11
 
-#define I2C_SIOC_H()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOC_PIN, GPIO_PIN_SET)
-#define I2C_SIOC_L()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOC_PIN, GPIO_PIN_RESET)
+#define SOFT_I2C_SIOC_H()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOC_PIN, GPIO_PIN_SET)
+#define SOFT_I2C_SIOC_L()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOC_PIN, GPIO_PIN_RESET)
 
-#define I2C_SIOD_H()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOD_PIN, GPIO_PIN_SET)
-#define I2C_SIOD_L()            HAL_GPIO_WritePin(I2C_PORT, I2C_SIOD_PIN, GPIO_PIN_RESET)
+#define SOFT_I2C_SIOD_H()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN, GPIO_PIN_SET)
+#define SOFT_I2C_SIOD_L()            HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN, GPIO_PIN_RESET)
 
-#define I2C_SIOD_READ()         HAL_GPIO_ReadPin(I2C_PORT, I2C_SIOD_PIN)
-#define I2C_SIOD_WRITE(bit)     HAL_GPIO_WritePin(I2C_PORT, I2C_SIOD_PIN, bit);
+#define SOFT_I2C_SIOD_READ()         HAL_GPIO_ReadPin (SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN)
+#define SOFT_I2C_SIOD_WRITE(bit)     HAL_GPIO_WritePin(SOFT_I2C_PORT, SOFT_I2C_SIOD_PIN, bit);
 
-#define I2C_SPIN_DELAY          16
+#define SOFT_I2C_SPIN_DELAY          16
 
 #endif //__OMV_BOARDCONFIG_H__
